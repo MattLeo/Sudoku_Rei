@@ -23,14 +23,14 @@ fun NumberPad(
         for (row in 0..2) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 for (col in 0..2) {
                     val num = row * 3 + col + 1
                     FilledTonalButton(
                         modifier = Modifier
                             .weight(1f)
-                            .height(52.dp),
+                            .height(44.dp),
                         onClick = { onNumberClick(num) },
                         contentPadding = PaddingValues(0.dp)
                     ) {
@@ -47,7 +47,7 @@ fun NumberPad(
         OutlinedButton(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(46.dp),
+                .height(36.dp),
             onClick = onErase
         ) {
             Icon(
@@ -55,7 +55,7 @@ fun NumberPad(
                 contentDescription = "Erase",
                 modifier = Modifier.size(18.dp)
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(6.dp))
             Text("Erase")
         }
     }
