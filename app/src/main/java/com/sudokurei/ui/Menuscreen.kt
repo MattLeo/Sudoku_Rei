@@ -1,9 +1,10 @@
 package com.sudokurei.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -15,7 +16,13 @@ import com.sudokurei.game.Difficulty
 import com.sudokurei.ui.theme.*
 
 @Composable
-fun MenuScreen(onDifficultySelected: (Difficulty) -> Unit) {
+fun MenuScreen(
+    onNewGame: (Difficulty) -> Unit,
+    onStatistics: () -> Unit,
+    onSettings: () -> Unit
+) {
+    var showDifficultyDialog by remember { mutableStateOf(false) }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -27,8 +34,7 @@ fun MenuScreen(onDifficultySelected: (Difficulty) -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-
-            // ── Title ──────────────────────────────────────────────────────────
+            // ── Title ──────────────────────────────────────────────────────
             Text(
                 text = "SUDOKU",
                 style = MaterialTheme.typography.displayMedium,
@@ -50,65 +56,96 @@ fun MenuScreen(onDifficultySelected: (Difficulty) -> Unit) {
                 thickness = 2.dp,
                 color = MaterialTheme.colorScheme.primary
             )
-            Spacer(Modifier.height(48.dp))
+            Spacer(Modifier.height(56.dp))
 
-            // ── Prompt ─────────────────────────────────────────────────────────
-            Text(
-                text = "Select Difficulty",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                letterSpacing = 1.sp
-            )
+            // ── New Game ───────────────────────────────────────────────────
+            Button(
+                onClick = { showDifficultyDialog = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("New Game", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(12.dp))
 
-            // ── Difficulty buttons ─────────────────────────────────────────────
-            Difficulty.entries.forEach { difficulty ->
-                DifficultyButton(
-                    difficulty = difficulty,
-                    onClick = { onDifficultySelected(difficulty) }
-                )
-                Spacer(Modifier.height(12.dp))
+            // ── Statistics ─────────────────────────────────────────────────
+            FilledTonalButton(
+                onClick = onStatistics,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Statistics", fontSize = 18.sp)
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // ── Settings ───────────────────────────────────────────────────
+            FilledTonalButton(
+                onClick = onSettings,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Settings", fontSize = 18.sp)
             }
         }
+    }
+
+    if (showDifficultyDialog) {
+        DifficultyDialog(
+            onDismiss = { showDifficultyDialog = false },
+            onSelect = { diff ->
+                showDifficultyDialog = false
+                onNewGame(diff)
+            }
+        )
     }
 }
 
 @Composable
-private fun DifficultyButton(difficulty: Difficulty, onClick: () -> Unit) {
-    val (bgColor, label) = when (difficulty) {
-        Difficulty.EASY   -> DiffMedium to "Easy"
-        Difficulty.MEDIUM -> DiffMedium to "Medium"
-        Difficulty.HARD   -> DiffMedium to "Hard"
-        Difficulty.EXPERT -> DiffMedium to "Expert"
-    }
-    val givens = 81 - difficulty.cellsToRemove
+private fun DifficultyDialog(
+    onDismiss: () -> Unit,
+    onSelect: (Difficulty) -> Unit
+) {
+    var selected by remember { mutableStateOf(Difficulty.EASY) }
 
-    Button(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(64.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = bgColor)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = label,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            Text(
-                text = "$givens givens",
-                fontSize = 13.sp,
-                color = Color.White.copy(alpha = 0.8f),
-                textAlign = TextAlign.End
-            )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Difficulty") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Difficulty.entries.forEach { diff ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selected = diff }
+                            .padding(vertical = 2.dp)
+                    ) {
+                        RadioButton(selected = selected == diff, onClick = { selected = diff })
+                        Spacer(Modifier.width(6.dp))
+                        Text(diff.displayName, style = MaterialTheme.typography.bodyLarge)
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "${81 - diff.cellsToRemove} givens",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSelect(selected) }) { Text("Start") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
-    }
+    )
 }

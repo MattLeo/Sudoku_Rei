@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,23 +19,43 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.material.icons.automirrored.filled.Undo
 import com.sudokurei.game.Difficulty
+import com.sudokurei.viewmodel.AppScreen
 import com.sudokurei.viewmodel.SudokuViewModel
 import com.sudokurei.ui.theme.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+// ── Navigation hub ─────────────────────────────────────────────────────────
+
 @Composable
 fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
-    val showMenu by vm.showMenu.collectAsStateWithLifecycle()
-    val state by vm.state.collectAsStateWithLifecycle()
-    var showNewGameDialog by remember { mutableStateOf(false) }
-    var showCompletionDialog by remember { mutableStateOf(false) }
+    val screen by vm.screen.collectAsStateWithLifecycle()
+    val stats  by vm.stats.collectAsStateWithLifecycle()
 
-    if (showMenu) {
-        MenuScreen(onDifficultySelected = { vm.startNewGame(it) })
-        return
+    when (screen) {
+        AppScreen.MENU -> MenuScreen(
+            onNewGame    = vm::startNewGame,
+            onStatistics = { vm.navigateTo(AppScreen.STATS) },
+            onSettings   = { vm.navigateTo(AppScreen.SETTINGS) }
+        )
+        AppScreen.GAME     -> GameContent(vm)
+        AppScreen.STATS    -> StatsScreen(
+            stats   = stats,
+            onBack  = { vm.navigateTo(AppScreen.MENU) },
+            onReset = vm::resetStats
+        )
+        AppScreen.SETTINGS -> SettingsScreen(
+            onBack = { vm.navigateTo(AppScreen.MENU) }
+        )
     }
+}
+
+// ── Game screen ────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GameContent(vm: SudokuViewModel) {
+    val state by vm.state.collectAsStateWithLifecycle()
+    var showCompletionDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.isComplete) {
         if (state.isComplete) showCompletionDialog = true
@@ -49,11 +70,9 @@ fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Sudoku Rei", fontWeight = FontWeight.Bold) },
+                title = { Text("Sudoku", fontWeight = FontWeight.Bold) },
                 actions = {
-                    TextButton(onClick = { vm.showMainMenu() }) {
-                        Text("Menu")
-                    }
+                    TextButton(onClick = vm::showMainMenu) { Text("Menu") }
                 }
             )
         }
@@ -61,9 +80,7 @@ fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
 
         if (state.isGenerating) {
             Box(
-                Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -82,107 +99,76 @@ fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-
-            // ── Header row ────────────────────────────────────────────────
+            // Header
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 DifficultyBadge(state.difficulty)
-                TimerDisplay(
-                    seconds = state.elapsedSeconds,
-                    isPaused = state.isPaused,
-                    onToggle = vm::togglePause
-                )
+                TimerDisplay(state.elapsedSeconds, state.isPaused, vm::togglePause)
             }
 
             Spacer(Modifier.height(10.dp))
 
-            // ── Grid or pause overlay ─────────────────────────────────────
             if (state.isPaused) {
                 PauseOverlay(Modifier.fillMaxWidth())
             } else {
                 SudokuGrid(
-                    modifier = Modifier.fillMaxWidth(),
-                    cells = state.cells,
+                    modifier     = Modifier.fillMaxWidth(),
+                    cells        = state.cells,
                     selectedCell = state.selectedCell,
-                    onCellClick = vm::selectCell
+                    onCellClick  = vm::selectCell
                 )
             }
 
             Spacer(Modifier.height(10.dp))
 
-            // ── Action row ────────────────────────────────────────────────
+            // Action row
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                ActionButton("Undo",  Icons.AutoMirrored.Filled.Undo,  vm::undo,            enabled = !state.isComplete)
                 ActionButton(
-                    label = "Undo",
-                    icon = Icons.AutoMirrored.Filled.Undo,
-                    onClick = vm::undo,
-                    enabled = !state.isComplete
-                )
-                ActionButton(
-                    label = if (state.isNotesMode) "Notes ON" else "Notes",
-                    icon = Icons.Default.Edit,
+                    label   = if (state.isNotesMode) "Notes ON" else "Notes",
+                    icon    = Icons.Default.Edit,
                     onClick = vm::toggleNotesMode,
-                    tint = if (state.isNotesMode) MaterialTheme.colorScheme.primary
-                    else LocalContentColor.current,
+                    tint    = if (state.isNotesMode) MaterialTheme.colorScheme.primary else LocalContentColor.current,
                     enabled = !state.isComplete
                 )
                 ActionButton(
-                    label = "Hint (${state.maxHints - state.hintsUsed})",
-                    icon = Icons.Default.Lightbulb,
+                    label   = "Hint (${state.maxHints - state.hintsUsed})",
+                    icon    = Icons.Default.Lightbulb,
                     onClick = vm::getHint,
                     enabled = state.hintsUsed < state.maxHints && !state.isComplete
                 )
                 ActionButton(
-                    label = if (state.showErrors) "Errors ON" else "Errors",
-                    icon = Icons.Default.RemoveRedEye,
+                    label   = if (state.showErrors) "Errors ON" else "Errors",
+                    icon    = Icons.Default.RemoveRedEye,
                     onClick = vm::toggleShowErrors,
-                    tint = if (state.showErrors) MaterialTheme.colorScheme.primary
-                    else LocalContentColor.current
+                    tint    = if (state.showErrors) MaterialTheme.colorScheme.primary else LocalContentColor.current
                 )
             }
 
             Spacer(Modifier.height(10.dp))
 
-            // ── Number pad ────────────────────────────────────────────────
             NumberPad(
-                modifier = Modifier.fillMaxWidth(),
+                modifier         = Modifier.fillMaxWidth(),
                 completedNumbers = completedNumbers,
-                onNumberClick = vm::enterNumber,
-                onErase = vm::erase
+                onNumberClick    = vm::enterNumber,
+                onErase          = vm::erase
             )
         }
-    }
-
-    // ── Dialogs ───────────────────────────────────────────────────────────
-
-    if (showNewGameDialog) {
-        NewGameDialog(
-            current = state.difficulty,
-            onDismiss = { showNewGameDialog = false },
-            onStart = { diff ->
-                vm.startNewGame(diff)
-                showNewGameDialog = false
-                showCompletionDialog = false
-            }
-        )
     }
 
     if (showCompletionDialog) {
         CompletionDialog(
             difficulty = state.difficulty,
-            seconds = state.elapsedSeconds,
-            onDismiss = { showCompletionDialog = false },
-            onNewGame = {
-                showCompletionDialog = false
-                showNewGameDialog = true
-            }
+            seconds    = state.elapsedSeconds,
+            onDismiss  = { showCompletionDialog = false },
+            onMenu     = { showCompletionDialog = false; vm.showMainMenu() }
         )
     }
 }
@@ -190,27 +176,14 @@ fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
 // ── Sub-composables ────────────────────────────────────────────────────────
 
 @Composable
-private fun TimerDisplay(
-    seconds: Long,
-    isPaused: Boolean,
-    onToggle: () -> Unit
-) {
+private fun TimerDisplay(seconds: Long, isPaused: Boolean, onToggle: () -> Unit) {
     val text = remember(seconds) { "%02d:%02d".format(seconds / 60, seconds % 60) }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Icon(
-            imageVector = Icons.Default.Timer,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = text,
-            fontFamily = FontFamily.Monospace,
-            style = MaterialTheme.typography.titleMedium
-        )
+        Icon(Icons.Default.Timer, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.titleMedium)
         IconButton(onClick = onToggle, modifier = Modifier.size(36.dp)) {
             Icon(
                 imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
@@ -256,17 +229,9 @@ private fun ActionButton(
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = tint.copy(alpha = alpha),
-            modifier = Modifier.size(24.dp)
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
-        )
+        Icon(icon, label, tint = tint.copy(alpha = alpha), modifier = Modifier.size(24.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha))
     }
 }
 
@@ -275,77 +240,16 @@ private fun PauseOverlay(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .aspectRatio(1f)
-            .background(
-                MaterialTheme.colorScheme.surfaceVariant,
-                RoundedCornerShape(8.dp)
-            ),
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                Icons.Default.Pause,
-                contentDescription = null,
-                modifier = Modifier.size(72.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Icon(Icons.Default.Pause, null, Modifier.size(72.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(12.dp))
-            Text(
-                "Paused",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                "Tap ▶ to resume",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text("Paused", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Tap ▶ to resume", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
-}
-
-@Composable
-private fun NewGameDialog(
-    current: Difficulty,
-    onDismiss: () -> Unit,
-    onStart: (Difficulty) -> Unit
-) {
-    var selected by remember { mutableStateOf(current) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("New Game") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Choose difficulty:", style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(4.dp))
-                Difficulty.entries.forEach { diff ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { selected = diff }
-                            .padding(vertical = 2.dp)
-                    ) {
-                        RadioButton(selected = selected == diff, onClick = { selected = diff })
-                        Spacer(Modifier.width(6.dp))
-                        Text(diff.displayName, style = MaterialTheme.typography.bodyLarge)
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            "${81 - diff.cellsToRemove} givens",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = { onStart(selected) }) { Text("Start") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
 }
 
 @Composable
@@ -353,36 +257,26 @@ private fun CompletionDialog(
     difficulty: Difficulty,
     seconds: Long,
     onDismiss: () -> Unit,
-    onNewGame: () -> Unit
+    onMenu: () -> Unit
 ) {
     val time = "%02d:%02d".format(seconds / 60, seconds % 60)
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Puzzle Complete! 🎉") },
         text = {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text("${difficulty.displayName} difficulty", style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    text = time,
+                Text(time,
                     style = MaterialTheme.typography.displaySmall,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
-                Text("time", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("time", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = {
-            Button(onClick = onNewGame) { Text("New Game") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
-        }
+        confirmButton = { Button(onClick = onMenu) { Text("Main Menu") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } }
     )
 }

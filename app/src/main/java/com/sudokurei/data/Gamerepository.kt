@@ -18,15 +18,15 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 class GameRepository(private val context: Context) {
 
-    private val GAME_KEY = stringPreferencesKey("game_state")
+    private val gameKey = stringPreferencesKey("game_state")
 
     suspend fun save(state: GameState, showMenu: Boolean) {
         val json = serialize(state, showMenu)
-        context.dataStore.edit { it[GAME_KEY] = json }
+        context.dataStore.edit { it[gameKey] = json }
     }
 
     suspend fun load(): Pair<GameState, Boolean>? {
-        val json = context.dataStore.data.map { it[GAME_KEY] }.first() ?: return null
+        val json = context.dataStore.data.map { it[gameKey] }.first() ?: return null
         return try {
             deserialize(json)
         } catch (_: Exception) {
