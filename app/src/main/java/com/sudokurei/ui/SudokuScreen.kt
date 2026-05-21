@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.sudokureai.ui.MenuScreen
 import com.sudokurei.game.Difficulty
 import com.sudokurei.viewmodel.SudokuViewModel
 import com.sudokurei.ui.theme.*
@@ -25,9 +26,15 @@ import com.sudokurei.ui.theme.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
+    val showMenu by vm.showMenu.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
     var showNewGameDialog by remember { mutableStateOf(false) }
     var showCompletionDialog by remember { mutableStateOf(false) }
+
+    if (showMenu) {
+        MenuScreen(onDifficultySelected = { vm.startNewGame(it) })
+        return
+    }
 
     LaunchedEffect(state.isComplete) {
         if (state.isComplete) showCompletionDialog = true
@@ -44,8 +51,8 @@ fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
             TopAppBar(
                 title = { Text("Sudoku Rei", fontWeight = FontWeight.Bold) },
                 actions = {
-                    TextButton(onClick = { showNewGameDialog = true }) {
-                        Text("New Game")
+                    TextButton(onClick = { vm.showMainMenu() }) {
+                        Text("Menu")
                     }
                 }
             )
