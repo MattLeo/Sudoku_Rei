@@ -42,7 +42,7 @@ fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Sudoku", fontWeight = FontWeight.Bold) },
+                title = { Text("Sudoku Rei", fontWeight = FontWeight.Bold) },
                 actions = {
                     TextButton(onClick = { showNewGameDialog = true }) {
                         Text("New Game")

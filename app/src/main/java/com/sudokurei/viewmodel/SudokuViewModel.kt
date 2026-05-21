@@ -72,6 +72,8 @@ class SudokuViewModel : ViewModel() {
             newCells[idx] = cell.copy(value = 0, notes = notes, isError = false)
         } else {
             newCells[idx] = cell.copy(value = num, notes = emptySet())
+            // Eliminate placed number from notes in all related cells
+            eliminateNoteFromRelated(newCells, idx, num)
         }
 
         applyUpdate(newCells)
@@ -103,7 +105,9 @@ class SudokuViewModel : ViewModel() {
 
         pushHistory(Move(idx, s.cells[idx]))
         val newCells = s.cells.toMutableList()
-        newCells[idx] = CellState(value = s.solution[idx], isGiven = false)
+        val hintValue = s.solution[idx]
+        newCells[idx] = CellState(value = hintValue, isGiven = false)
+        eliminateNoteFromRelated(newCells, idx, hintValue)
 
         val checked = if (s.showErrors)
             SudokuEngine.checkErrors(newCells, s.solution) else newCells
@@ -150,6 +154,15 @@ class SudokuViewModel : ViewModel() {
         val complete = !forceIncomplete && checked.all { it.value != 0 && !it.isError }
         _state.update { it.copy(cells = checked, isComplete = complete) }
         if (complete) timerJob?.cancel()
+    }
+
+    private fun eliminateNoteFromRelated(cells: MutableList<CellState>, idx: Int, num: Int) {
+        SudokuEngine.getRelatedIndices(idx).forEach { relIdx ->
+            val rel = cells[relIdx]
+            if (num in rel.notes) {
+                cells[relIdx] = rel.copy(notes = rel.notes - num)
+            }
+        }
     }
 
     private fun pushHistory(move: Move) {
