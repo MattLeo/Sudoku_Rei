@@ -33,6 +33,12 @@ fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
         if (state.isComplete) showCompletionDialog = true
     }
 
+    val completedNumbers = remember(state.cells) {
+        (1..9).filter { num ->
+            state.cells.count { it.value == num && !it.isError } == 9
+        }.toSet()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -140,6 +146,7 @@ fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
             // ── Number pad ────────────────────────────────────────────────
             NumberPad(
                 modifier = Modifier.fillMaxWidth(),
+                completedNumbers = completedNumbers,
                 onNumberClick = vm::enterNumber,
                 onErase = vm::erase
             )

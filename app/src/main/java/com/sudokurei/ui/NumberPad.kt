@@ -13,12 +13,13 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun NumberPad(
     modifier: Modifier = Modifier,
+    completedNumbers: Set<Int> = emptySet(),
     onNumberClick: (Int) -> Unit,
     onErase: () -> Unit
 ) {
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         for (row in 0..2) {
             Row(
@@ -27,16 +28,18 @@ fun NumberPad(
             ) {
                 for (col in 0..2) {
                     val num = row * 3 + col + 1
+                    val completed = num in completedNumbers
                     FilledTonalButton(
                         modifier = Modifier
                             .weight(1f)
                             .height(44.dp),
                         onClick = { onNumberClick(num) },
+                        enabled = !completed,
                         contentPadding = PaddingValues(0.dp)
                     ) {
                         Text(
                             text = num.toString(),
-                            fontSize = 22.sp,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -48,15 +51,16 @@ fun NumberPad(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(36.dp),
-            onClick = onErase
+            onClick = onErase,
+            contentPadding = PaddingValues(horizontal = 16.dp)
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.Backspace,
                 contentDescription = "Erase",
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(16.dp)
             )
             Spacer(Modifier.width(6.dp))
-            Text("Erase")
+            Text("Erase", fontSize = 13.sp)
         }
     }
 }
