@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.sudokureai.ui.MenuScreen
+import androidx.compose.material.icons.automirrored.filled.Undo
 import com.sudokurei.game.Difficulty
 import com.sudokurei.viewmodel.SudokuViewModel
 import com.sudokurei.ui.theme.*
@@ -121,7 +121,7 @@ fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
             ) {
                 ActionButton(
                     label = "Undo",
-                    icon = Icons.Default.Undo,
+                    icon = Icons.AutoMirrored.Filled.Undo,
                     onClick = vm::undo,
                     enabled = !state.isComplete
                 )

@@ -1,7 +1,9 @@
 package com.sudokurei.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.sudokurei.data.GameRepository
 import com.sudokurei.game.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -9,12 +11,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.ArrayDeque
 
-class SudokuViewModel : ViewModel() {
+class SudokuViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val repository = GameRepository(application)
 
     private val _state = MutableStateFlow(GameState())
     val state: StateFlow<GameState> = _state.asStateFlow()
@@ -25,14 +31,30 @@ class SudokuViewModel : ViewModel() {
     private val history = ArrayDeque<Move>()
     private var timerJob: Job? = null
 
+    init {
+        // Restore saved state, then start auto-saving on every change
+        viewModelScope.launch {
+            val saved = repository.load()
+            if (saved != null) {
+                val (state, menu) = saved
+                _state.value = state
+                _showMenu.value = menu
+                if (!menu && !state.isComplete) startTimer()
+            }
+            // Auto-save whenever state or menu visibility changes
+            combine(_state, _showMenu) { s, m -> Pair(s, m) }
+                .collectLatest { (s, m) -> repository.save(s, m) }
+        }
+    }
+
     // ── Game lifecycle ─────────────────────────────────────────────────────
 
     fun startNewGame(difficulty: Difficulty) {
         timerJob?.cancel()
         history.clear()
+        _showMenu.value = false
         _state.update { it.copy(isGenerating = true) }
 
-        _showMenu.value = false
         viewModelScope.launch(Dispatchers.Default) {
             val puzzle = SudokuEngine.generate(difficulty)
             val cells = puzzle.initial.mapIndexed { i, v ->
@@ -40,14 +62,19 @@ class SudokuViewModel : ViewModel() {
             }
             withContext(Dispatchers.Main) {
                 _state.value = GameState(
-                    cells = cells,
-                    solution = puzzle.solution,
+                    cells      = cells,
+                    solution   = puzzle.solution,
                     difficulty = difficulty,
-                    maxHints = difficulty.maxHints
+                    maxHints   = difficulty.maxHints
                 )
                 startTimer()
             }
         }
+    }
+
+    fun showMainMenu() {
+        timerJob?.cancel()
+        _showMenu.value = true
     }
 
     // ── Input ──────────────────────────────────────────────────────────────
@@ -67,15 +94,12 @@ class SudokuViewModel : ViewModel() {
 
         val newCells = s.cells.toMutableList()
         if (s.isNotesMode) {
-            // Toggle note; clear value
             val notes = cell.notes.toMutableSet().also {
                 if (num in it) it.remove(num) else it.add(num)
             }
             newCells[idx] = cell.copy(value = 0, notes = notes, isError = false)
         } else {
             newCells[idx] = cell.copy(value = num, notes = emptySet())
-            // Eliminate placed number from notes in all related cells
-            eliminateNoteFromRelated(newCells, idx, num)
         }
 
         applyUpdate(newCells)
@@ -107,28 +131,15 @@ class SudokuViewModel : ViewModel() {
 
         pushHistory(Move(idx, s.cells[idx]))
         val newCells = s.cells.toMutableList()
-        val hintValue = s.solution[idx]
-        newCells[idx] = CellState(value = hintValue, isGiven = false)
-        eliminateNoteFromRelated(newCells, idx, hintValue)
+        newCells[idx] = CellState(value = s.solution[idx], isGiven = false)
 
-        val checked = if (s.showErrors)
-            SudokuEngine.checkErrors(newCells, s.solution) else newCells
+        val checked = if (s.showErrors) SudokuEngine.checkErrors(newCells, s.solution) else newCells
         val complete = checked.all { it.value != 0 && !it.isError }
 
         _state.update {
-            it.copy(
-                cells = checked,
-                hintsUsed = it.hintsUsed + 1,
-                selectedCell = idx,
-                isComplete = complete
-            )
+            it.copy(cells = checked, hintsUsed = it.hintsUsed + 1, selectedCell = idx, isComplete = complete)
         }
         if (complete) timerJob?.cancel()
-    }
-
-    fun showMainMenu() {
-        timerJob?.cancel()
-        _showMenu.value = true
     }
 
     // ── Toggles ────────────────────────────────────────────────────────────
@@ -156,20 +167,10 @@ class SudokuViewModel : ViewModel() {
 
     private fun applyUpdate(newCells: MutableList<CellState>, forceIncomplete: Boolean = false) {
         val s = _state.value
-        val checked = if (s.showErrors)
-            SudokuEngine.checkErrors(newCells, s.solution) else newCells
+        val checked = if (s.showErrors) SudokuEngine.checkErrors(newCells, s.solution) else newCells
         val complete = !forceIncomplete && checked.all { it.value != 0 && !it.isError }
         _state.update { it.copy(cells = checked, isComplete = complete) }
         if (complete) timerJob?.cancel()
-    }
-
-    private fun eliminateNoteFromRelated(cells: MutableList<CellState>, idx: Int, num: Int) {
-        SudokuEngine.getRelatedIndices(idx).forEach { relIdx ->
-            val rel = cells[relIdx]
-            if (num in rel.notes) {
-                cells[relIdx] = rel.copy(notes = rel.notes - num)
-            }
-        }
     }
 
     private fun pushHistory(move: Move) {
