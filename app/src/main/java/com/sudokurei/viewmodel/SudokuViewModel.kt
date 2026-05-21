@@ -19,10 +19,11 @@ class SudokuViewModel : ViewModel() {
     private val _state = MutableStateFlow(GameState())
     val state: StateFlow<GameState> = _state.asStateFlow()
 
+    private val _showMenu = MutableStateFlow(true)
+    val showMenu: StateFlow<Boolean> = _showMenu.asStateFlow()
+
     private val history = ArrayDeque<Move>()
     private var timerJob: Job? = null
-
-    init { startNewGame(Difficulty.EASY) }
 
     // ── Game lifecycle ─────────────────────────────────────────────────────
 
@@ -31,6 +32,7 @@ class SudokuViewModel : ViewModel() {
         history.clear()
         _state.update { it.copy(isGenerating = true) }
 
+        _showMenu.value = false
         viewModelScope.launch(Dispatchers.Default) {
             val puzzle = SudokuEngine.generate(difficulty)
             val cells = puzzle.initial.mapIndexed { i, v ->
@@ -122,6 +124,11 @@ class SudokuViewModel : ViewModel() {
             )
         }
         if (complete) timerJob?.cancel()
+    }
+
+    fun showMainMenu() {
+        timerJob?.cancel()
+        _showMenu.value = true
     }
 
     // ── Toggles ────────────────────────────────────────────────────────────
