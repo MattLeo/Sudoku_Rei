@@ -68,7 +68,7 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
         timerJob?.cancel()
         history.clear()
         _screen.value = AppScreen.GAME
-        _state.update { it.copy(isGenerating = true) }
+        _state.update { it.copy(isGenerating = true, isComplete = false) }
 
         viewModelScope.launch(Dispatchers.Default) {
             val puzzle = SudokuEngine.generate(difficulty)
@@ -108,6 +108,12 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
             newCells[idx] = cell.copy(value = 0, notes = notes, isError = false)
         } else {
             newCells[idx] = cell.copy(value = num, notes = emptySet())
+            SudokuEngine.getRelatedIndices(idx).forEach { relIdx ->
+                val rel = newCells[relIdx]
+                if (num in rel.notes) {
+                    newCells[relIdx] = rel.copy(notes = rel.notes - num)
+                }
+            }
         }
 
         applyUpdate(newCells)

@@ -111,6 +111,52 @@ fun SudokuGrid(
         val noteFontSize = with(density) { (cellSizePx * 0.22f).toSp() }
         val textMeasurer = rememberTextMeasurer()
 
+        // ── Cached text measurements — only remeasures if font size changes ──
+        val givenMeasures = remember(numberFontSize) {
+            (1..9).associate { n ->
+                n to textMeasurer.measure(
+                    text = n.toString(),
+                    style = TextStyle(
+                        fontSize = numberFontSize,
+                        fontWeight = FontWeight.Bold,
+                        color = NumberGiven
+                    )
+                )
+            }
+        }
+        val userMeasures = remember(numberFontSize) {
+            (1..9).associate { n ->
+                n to textMeasurer.measure(
+                    text = n.toString(),
+                    style = TextStyle(
+                        fontSize = numberFontSize,
+                        fontWeight = FontWeight.Medium,
+                        color = NumberUser
+                    )
+                )
+            }
+        }
+        val errorMeasures = remember(numberFontSize) {
+            (1..9).associate { n ->
+                n to textMeasurer.measure(
+                    text = n.toString(),
+                    style = TextStyle(
+                        fontSize = numberFontSize,
+                        fontWeight = FontWeight.Medium,
+                        color = NumberError
+                    )
+                )
+            }
+        }
+        val noteMeasures = remember(noteFontSize) {
+            (1..9).associate { n ->
+                n to textMeasurer.measure(
+                    text = n.toString(),
+                    style = TextStyle(fontSize = noteFontSize, color = NumberNote)
+                )
+            }
+        }
+
         Canvas(Modifier.fillMaxSize()) {
             val cSize = size.width / 9f
 
@@ -161,7 +207,7 @@ fun SudokuGrid(
                 drawLine(color, Offset(pos, 0f), Offset(pos, size.height), sw)
             }
 
-            // 4. Numbers and notes
+            // 4. Numbers and notes — lookup from cache, no measuring on each draw
             cells.forEachIndexed { i, cell ->
                 val row = i / 9
                 val col = i % 9
@@ -170,19 +216,11 @@ fun SudokuGrid(
 
                 when {
                     cell.value != 0 -> {
-                        val color = when {
-                            cell.isError -> NumberError
-                            cell.isGiven -> NumberGiven
-                            else         -> NumberUser
+                        val measured = when {
+                            cell.isError -> errorMeasures[cell.value]!!
+                            cell.isGiven -> givenMeasures[cell.value]!!
+                            else         -> userMeasures[cell.value]!!
                         }
-                        val measured = textMeasurer.measure(
-                            text = cell.value.toString(),
-                            style = TextStyle(
-                                fontSize = numberFontSize,
-                                fontWeight = if (cell.isGiven) FontWeight.Bold else FontWeight.Medium,
-                                color = color
-                            )
-                        )
                         drawText(
                             textLayoutResult = measured,
                             topLeft = Offset(
@@ -197,10 +235,7 @@ fun SudokuGrid(
                             if (n !in cell.notes) continue
                             val nr = (n - 1) / 3
                             val nc = (n - 1) % 3
-                            val measured = textMeasurer.measure(
-                                text = n.toString(),
-                                style = TextStyle(fontSize = noteFontSize, color = NumberNote)
-                            )
+                            val measured = noteMeasures[n]!!
                             drawText(
                                 textLayoutResult = measured,
                                 topLeft = Offset(
