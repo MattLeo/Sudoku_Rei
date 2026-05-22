@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import com.sudokurei.game.Difficulty
 import com.sudokurei.viewmodel.AppScreen
 import com.sudokurei.viewmodel.SudokuViewModel
@@ -32,21 +34,34 @@ fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
     val screen by vm.screen.collectAsStateWithLifecycle()
     val stats  by vm.stats.collectAsStateWithLifecycle()
 
-    when (screen) {
-        AppScreen.MENU -> MenuScreen(
-            onNewGame    = vm::startNewGame,
-            onStatistics = { vm.navigateTo(AppScreen.STATS) },
-            onSettings   = { vm.navigateTo(AppScreen.SETTINGS) }
-        )
-        AppScreen.GAME     -> GameContent(vm)
-        AppScreen.STATS    -> StatsScreen(
-            stats   = stats,
-            onBack  = { vm.navigateTo(AppScreen.MENU) },
-            onReset = vm::resetStats
-        )
-        AppScreen.SETTINGS -> SettingsScreen(
-            onBack = { vm.navigateTo(AppScreen.MENU) }
-        )
+    AnimatedContent(
+        targetState = screen,
+        transitionSpec = {
+            (fadeIn(animationSpec = tween(300)) +
+                    scaleIn(initialScale = 0.92f, animationSpec = tween(300)))
+                .togetherWith(
+                    fadeOut(animationSpec = tween(150)) +
+                            scaleOut(targetScale = 0.92f, animationSpec = tween(150))
+                )
+        },
+        label = "screen_transition"
+    ) { targetScreen ->
+        when (targetScreen) {
+            AppScreen.MENU -> MenuScreen(
+                onNewGame    = vm::startNewGame,
+                onStatistics = { vm.navigateTo(AppScreen.STATS) },
+                onSettings   = { vm.navigateTo(AppScreen.SETTINGS) }
+            )
+            AppScreen.GAME     -> GameContent(vm)
+            AppScreen.STATS    -> StatsScreen(
+                stats   = stats,
+                onBack  = { vm.navigateTo(AppScreen.MENU) },
+                onReset = vm::resetStats
+            )
+            AppScreen.SETTINGS -> SettingsScreen(
+                onBack = { vm.navigateTo(AppScreen.MENU) }
+            )
+        }
     }
 }
 
