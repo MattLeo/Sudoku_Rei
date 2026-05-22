@@ -65,7 +65,12 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
         timerJob?.cancel()
         history.clear()
         _screen.value = AppScreen.GAME
-        _state.update { it.copy(isGenerating = true, isComplete = false, isGameOver = false) }
+        _state.update { it.copy(
+            isGenerating = true,
+            isComplete = false,
+            isGameOver = false,
+            isNewBest = false
+        )}
 
         viewModelScope.launch(Dispatchers.Default) {
             val puzzle = SudokuEngine.generate(difficulty)
@@ -144,7 +149,14 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
 
         pushHistory(Move(idx, s.cells[idx]))
         val newCells = s.cells.toMutableList()
-        newCells[idx] = CellState(value = s.solution[idx], isGiven = false)
+        val hintNum = s.solution[idx]
+        newCells[idx] = CellState(value = hintNum, isGiven = false)
+
+        // Removed notes from related cells
+        SudokuEngine.getRelatedIndices(idx).forEach { relIdx ->
+            val rel = newCells[relIdx]
+            if (hintNum in rel.notes) newCells[relIdx] = rel.copy(notes = rel.notes - hintNum)
+        }
 
         val checked  = if (s.showErrors) SudokuEngine.checkErrors(newCells, s.solution) else newCells
         val complete = checked.all { it.value != 0 && !it.isError }
@@ -219,9 +231,10 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun recordWin(difficulty: Difficulty, elapsedSeconds: Long) {
-        val current = _stats.value
-        val ds      = current.forDifficulty(difficulty)
-        val updated = ds.copy(
+        val current   = _stats.value
+        val ds        = current.forDifficulty(difficulty)
+        val isNewBest = ds.gamesWon == 0 || elapsedSeconds < ds.bestTime
+        val updated   = ds.copy(
             gamesWon  = ds.gamesWon + 1,
             bestTime  = minOf(ds.bestTime, elapsedSeconds),
             totalTime = ds.totalTime + elapsedSeconds
@@ -229,6 +242,7 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
         val newStats = current.withUpdated(difficulty, updated)
         _stats.value = newStats
         statsRepo.save(newStats)
+        _state.update { it.copy(isNewBest = isNewBest) }
     }
 
     private fun pushHistory(move: Move) {

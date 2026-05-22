@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,6 +58,7 @@ private fun GameContent(vm: SudokuViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
     var showCompletionDialog by remember { mutableStateOf(false) }
     var showGameOverDialog   by remember { mutableStateOf(false) }
+    var showAbandonDialog    by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.isComplete) {
         if (state.isComplete) showCompletionDialog = true
@@ -76,7 +78,13 @@ private fun GameContent(vm: SudokuViewModel) {
             TopAppBar(
                 title = { Text("Sudoku Rei", fontWeight = FontWeight.Bold) },
                 actions = {
-                    TextButton(onClick = vm::showMainMenu) { Text("Menu") }
+                    TextButton(onClick = {
+                        if (state.isComplete || state.isGameOver) {
+                            vm.showMainMenu()
+                        } else {
+                            showAbandonDialog = true
+                        }
+                    }) { Text("Menu") }
                 }
             )
         }
@@ -172,6 +180,7 @@ private fun GameContent(vm: SudokuViewModel) {
         CompletionDialog(
             difficulty = state.difficulty,
             seconds    = state.elapsedSeconds,
+            isNewBest  = state.isNewBest,
             onDismiss  = { showCompletionDialog = false },
             onMenu     = { showCompletionDialog = false; vm.showMainMenu() }
         )
@@ -186,6 +195,30 @@ private fun GameContent(vm: SudokuViewModel) {
             onMenu = {
                 showGameOverDialog = false
                 vm.showMainMenu()
+            }
+        )
+    }
+
+    if (showAbandonDialog) {
+        AlertDialog(
+            onDismissRequest = { showAbandonDialog = false },
+            title = { Text("Abandon Puzzle?") },
+            text = { Text("Your current progress will be lost.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showAbandonDialog = false
+                        vm.showMainMenu()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) { Text("Abandon") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAbandonDialog = false }) {
+                    Text("Keep Playing")
+                }
             }
         )
     }
@@ -294,25 +327,66 @@ private fun PauseOverlay(modifier: Modifier = Modifier) {
 private fun CompletionDialog(
     difficulty: Difficulty,
     seconds: Long,
+    isNewBest: Boolean,
     onDismiss: () -> Unit,
     onMenu: () -> Unit
 ) {
     val time = "%02d:%02d".format(seconds / 60, seconds % 60)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Puzzle Complete!") },
+        title = {
+            Text(
+                text = " \uD83C\uDF89 Puzzle Complete!",
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
         text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isNewBest) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Star,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "New Best!",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
                 Text("${difficulty.displayName} difficulty", style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(12.dp))
-                Text(time,
+                Text(
+                    text = time,
                     style = MaterialTheme.typography.displaySmall,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
-                Text("time", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "time",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         },
         confirmButton = { Button(onClick = onMenu) { Text("Main Menu") } },
