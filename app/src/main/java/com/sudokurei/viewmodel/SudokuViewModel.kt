@@ -42,10 +42,9 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
                 val (state, showMenu) = saved
                 _state.value  = state
                 _screen.value = if (showMenu) AppScreen.MENU else AppScreen.GAME
-                if (!showMenu && !state.isComplete) startTimer()
+                if (!showMenu && !state.isComplete && !state.isGameOver) startTimer()
             }
 
-            // Auto-save game state on every change
             combine(_state, _screen) { s, sc -> Pair(s, sc) }
                 .collectLatest { (s, sc) -> gameRepo.save(s, sc == AppScreen.MENU) }
         }
@@ -53,9 +52,7 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
 
     // ── Navigation ─────────────────────────────────────────────────────────
 
-    fun navigateTo(screen: AppScreen) {
-        _screen.value = screen
-    }
+    fun navigateTo(screen: AppScreen) { _screen.value = screen }
 
     fun showMainMenu() {
         timerJob?.cancel()
@@ -68,7 +65,7 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
         timerJob?.cancel()
         history.clear()
         _screen.value = AppScreen.GAME
-        _state.update { it.copy(isGenerating = true, isComplete = false) }
+        _state.update { it.copy(isGenerating = true, isComplete = false, isGameOver = false) }
 
         viewModelScope.launch(Dispatchers.Default) {
             val puzzle = SudokuEngine.generate(difficulty)
@@ -88,14 +85,14 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
     // ── Input ──────────────────────────────────────────────────────────────
 
     fun selectCell(index: Int) {
-        if (_state.value.isPaused || _state.value.isComplete) return
+        if (_state.value.isPaused || _state.value.isComplete || _state.value.isGameOver) return
         _state.update { it.copy(selectedCell = index) }
     }
 
     fun enterNumber(num: Int) {
         val s   = _state.value
         val idx = s.selectedCell
-        if (idx < 0 || s.cells[idx].isGiven || s.isComplete || s.isPaused) return
+        if (idx < 0 || s.cells[idx].isGiven || s.isComplete || s.isPaused || s.isGameOver) return
 
         val cell = s.cells[idx]
         pushHistory(Move(idx, cell))
@@ -106,23 +103,24 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
                 if (num in it) it.remove(num) else it.add(num)
             }
             newCells[idx] = cell.copy(value = 0, notes = notes, isError = false)
+            applyUpdate(newCells)
         } else {
             newCells[idx] = cell.copy(value = num, notes = emptySet())
+            // Remove num from notes in all related cells
             SudokuEngine.getRelatedIndices(idx).forEach { relIdx ->
                 val rel = newCells[relIdx]
-                if (num in rel.notes) {
-                    newCells[relIdx] = rel.copy(notes = rel.notes - num)
-                }
+                if (num in rel.notes) newCells[relIdx] = rel.copy(notes = rel.notes - num)
             }
+            // Check if this placement is a mistake
+            val isMistake = num != s.solution[idx]
+            applyUpdate(newCells, mistakeDelta = if (isMistake) 1 else 0)
         }
-
-        applyUpdate(newCells)
     }
 
     fun erase() {
         val s   = _state.value
         val idx = s.selectedCell
-        if (idx < 0 || s.cells[idx].isGiven || s.isComplete || s.isPaused) return
+        if (idx < 0 || s.cells[idx].isGiven || s.isComplete || s.isPaused || s.isGameOver) return
         pushHistory(Move(idx, s.cells[idx]))
         val newCells = s.cells.toMutableList()
         newCells[idx] = CellState(isGiven = false)
@@ -130,6 +128,7 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun undo() {
+        if (_state.value.isGameOver) return
         val move = history.pollLast() ?: return
         val newCells = _state.value.cells.toMutableList()
         newCells[move.cellIndex] = move.previousCell
@@ -138,7 +137,7 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
 
     fun getHint() {
         val s = _state.value
-        if (s.hintsUsed >= s.maxHints || s.isComplete || s.isPaused) return
+        if (s.hintsUsed >= s.maxHints || s.isComplete || s.isPaused || s.isGameOver) return
 
         val idx = SudokuEngine.findHintCell(s.cells, s.solution)
         if (idx < 0) return
@@ -153,7 +152,7 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
         _state.update {
             it.copy(cells = checked, hintsUsed = it.hintsUsed + 1, selectedCell = idx, isComplete = complete)
         }
-        if (complete && !s.isComplete) {
+        if (complete) {
             timerJob?.cancel()
             recordWin(s.difficulty, s.elapsedSeconds)
         }
@@ -162,6 +161,7 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
     // ── Toggles ────────────────────────────────────────────────────────────
 
     fun togglePause() {
+        if (_state.value.isGameOver) return
         val nowPaused = !_state.value.isPaused
         _state.update { it.copy(isPaused = nowPaused, selectedCell = -1) }
         if (nowPaused) timerJob?.cancel() else startTimer()
@@ -189,14 +189,32 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
 
     // ── Private helpers ────────────────────────────────────────────────────
 
-    private fun applyUpdate(newCells: MutableList<CellState>, forceIncomplete: Boolean = false) {
-        val s        = _state.value
-        val checked  = if (s.showErrors) SudokuEngine.checkErrors(newCells, s.solution) else newCells
-        val complete = !forceIncomplete && checked.all { it.value != 0 && !it.isError }
-        _state.update { it.copy(cells = checked, isComplete = complete) }
-        if (complete && !s.isComplete) {
-            timerJob?.cancel()
-            recordWin(s.difficulty, s.elapsedSeconds)
+    private fun applyUpdate(
+        newCells: MutableList<CellState>,
+        forceIncomplete: Boolean = false,
+        mistakeDelta: Int = 0
+    ) {
+        val s            = _state.value
+        val checked      = if (s.showErrors) SudokuEngine.checkErrors(newCells, s.solution) else newCells
+        val complete     = !forceIncomplete && checked.all { it.value != 0 && !it.isError }
+        val newMistakes  = s.mistakeCount + mistakeDelta
+        val gameOver     = newMistakes >= 3
+
+        _state.update {
+            it.copy(
+                cells        = checked,
+                isComplete   = complete,
+                mistakeCount = newMistakes,
+                isGameOver   = gameOver
+            )
+        }
+
+        when {
+            complete && !s.isComplete -> {
+                timerJob?.cancel()
+                recordWin(s.difficulty, s.elapsedSeconds)
+            }
+            gameOver && !s.isGameOver -> timerJob?.cancel()
         }
     }
 
@@ -224,7 +242,7 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
             while (true) {
                 delay(1_000)
                 val s = _state.value
-                if (!s.isPaused && !s.isComplete && !s.isGenerating) {
+                if (!s.isPaused && !s.isComplete && !s.isGenerating && !s.isGameOver) {
                     _state.update { it.copy(elapsedSeconds = it.elapsedSeconds + 1) }
                 }
             }

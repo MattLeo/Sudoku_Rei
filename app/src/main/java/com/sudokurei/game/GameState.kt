@@ -19,9 +19,10 @@ data class GameState(
     val elapsedSeconds: Long = 0L,
     val isPaused: Boolean = false,
     val isNotesMode: Boolean = false,
-    val showErrors: Boolean = true
+    val showErrors: Boolean = true,
+    val mistakeCount: Int = 0,
+    val isGameOver: Boolean = false
 ) {
-    // IntArray doesn't implement structural equality; override manually
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is GameState) return false
@@ -36,7 +37,9 @@ data class GameState(
                 elapsedSeconds == other.elapsedSeconds &&
                 isPaused == other.isPaused &&
                 isNotesMode == other.isNotesMode &&
-                showErrors == other.showErrors
+                showErrors == other.showErrors &&
+                mistakeCount == other.mistakeCount &&
+                isGameOver == other.isGameOver
     }
 
     override fun hashCode(): Int {
@@ -52,6 +55,8 @@ data class GameState(
         result = 31 * result + isPaused.hashCode()
         result = 31 * result + isNotesMode.hashCode()
         result = 31 * result + showErrors.hashCode()
+        result = 31 * result + mistakeCount
+        result = 31 * result + isGameOver.hashCode()
         return result
     }
 }

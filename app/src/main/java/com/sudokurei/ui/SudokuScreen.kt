@@ -24,7 +24,7 @@ import com.sudokurei.viewmodel.AppScreen
 import com.sudokurei.viewmodel.SudokuViewModel
 import com.sudokurei.ui.theme.*
 
-// ── Navigation hub ─────────────────────────────────────────────────────────
+// Navigation hub
 
 @Composable
 fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
@@ -49,16 +49,20 @@ fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
     }
 }
 
-// ── Game screen ────────────────────────────────────────────────────────────
+// Game screen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GameContent(vm: SudokuViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
     var showCompletionDialog by remember { mutableStateOf(false) }
+    var showGameOverDialog   by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.isComplete) {
         if (state.isComplete) showCompletionDialog = true
+    }
+    LaunchedEffect(state.isGameOver) {
+        if (state.isGameOver) showGameOverDialog = true
     }
 
     val completedNumbers = remember(state.cells) {
@@ -70,7 +74,7 @@ private fun GameContent(vm: SudokuViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Sudoku", fontWeight = FontWeight.Bold) },
+                title = { Text("Sudoku Rei", fontWeight = FontWeight.Bold) },
                 actions = {
                     TextButton(onClick = vm::showMainMenu) { Text("Menu") }
                 }
@@ -86,7 +90,7 @@ private fun GameContent(vm: SudokuViewModel) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator()
                     Spacer(Modifier.height(16.dp))
-                    Text("Generating puzzle…")
+                    Text("Generating puzzle...")
                 }
             }
             return@Scaffold
@@ -106,6 +110,7 @@ private fun GameContent(vm: SudokuViewModel) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 DifficultyBadge(state.difficulty)
+                MistakeCounter(state.mistakeCount)
                 TimerDisplay(state.elapsedSeconds, state.isPaused, vm::togglePause)
             }
 
@@ -124,25 +129,25 @@ private fun GameContent(vm: SudokuViewModel) {
 
             Spacer(Modifier.height(10.dp))
 
-            // Action row
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                ActionButton("Undo",  Icons.AutoMirrored.Filled.Undo,  vm::undo,            enabled = !state.isComplete)
+                ActionButton("Undo", Icons.AutoMirrored.Filled.Undo, vm::undo,
+                    enabled = !state.isComplete && !state.isGameOver)
                 ActionButton(
                     label   = if (state.isNotesMode) "Notes ON" else "Notes",
                     icon    = Icons.Default.Edit,
                     onClick = vm::toggleNotesMode,
                     tint    = if (state.isNotesMode) MaterialTheme.colorScheme.primary else LocalContentColor.current,
-                    enabled = !state.isComplete
+                    enabled = !state.isComplete && !state.isGameOver
                 )
                 ActionButton(
                     label   = "Hint (${state.maxHints - state.hintsUsed})",
                     icon    = Icons.Default.Lightbulb,
                     onClick = vm::getHint,
-                    enabled = state.hintsUsed < state.maxHints && !state.isComplete
+                    enabled = state.hintsUsed < state.maxHints && !state.isComplete && !state.isGameOver
                 )
                 ActionButton(
                     label   = if (state.showErrors) "Errors ON" else "Errors",
@@ -171,9 +176,42 @@ private fun GameContent(vm: SudokuViewModel) {
             onMenu     = { showCompletionDialog = false; vm.showMainMenu() }
         )
     }
+
+    if (showGameOverDialog) {
+        GameOverDialog(
+            onTryAgain = {
+                showGameOverDialog = false
+                vm.startNewGame(state.difficulty)
+            },
+            onMenu = {
+                showGameOverDialog = false
+                vm.showMainMenu()
+            }
+        )
+    }
 }
 
-// ── Sub-composables ────────────────────────────────────────────────────────
+// Sub-composables
+
+@Composable
+private fun MistakeCounter(mistakeCount: Int) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        repeat(3) { index ->
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = null,
+                tint = if (index < mistakeCount)
+                    MaterialTheme.colorScheme.error
+                else
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
 
 @Composable
 private fun TimerDisplay(seconds: Long, isPaused: Boolean, onToggle: () -> Unit) {
@@ -247,7 +285,7 @@ private fun PauseOverlay(modifier: Modifier = Modifier) {
             Icon(Icons.Default.Pause, null, Modifier.size(72.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(12.dp))
             Text("Paused", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("Tap ▶ to resume", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Tap to resume", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -262,7 +300,7 @@ private fun CompletionDialog(
     val time = "%02d:%02d".format(seconds / 60, seconds % 60)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Puzzle Complete! 🎉") },
+        title = { Text("Puzzle Complete!") },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text("${difficulty.displayName} difficulty", style = MaterialTheme.typography.bodyLarge)
@@ -273,10 +311,43 @@ private fun CompletionDialog(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
-                Text("time", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("time", style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = { Button(onClick = onMenu) { Text("Main Menu") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
+
+@Composable
+private fun GameOverDialog(
+    onTryAgain: () -> Unit,
+    onMenu: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text("Game Over") },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    repeat(3) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Text("You made 3 mistakes.", style = MaterialTheme.typography.bodyLarge)
+            }
+        },
+        confirmButton = { Button(onClick = onTryAgain) { Text("Try Again") } },
+        dismissButton = { TextButton(onClick = onMenu) { Text("Main Menu") } }
     )
 }

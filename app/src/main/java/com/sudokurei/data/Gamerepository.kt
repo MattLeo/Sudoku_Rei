@@ -30,7 +30,7 @@ class GameRepository(private val context: Context) {
         return try {
             deserialize(json)
         } catch (_: Exception) {
-            null // corrupt data — start fresh
+            null
         }
     }
 
@@ -64,6 +64,8 @@ class GameRepository(private val context: Context) {
         obj.put("elapsedSeconds", state.elapsedSeconds)
         obj.put("isNotesMode",    state.isNotesMode)
         obj.put("showErrors",     state.showErrors)
+        obj.put("mistakeCount",   state.mistakeCount)
+        obj.put("isGameOver",     state.isGameOver)
         obj.put("showMenu",       showMenu)
 
         return obj.toString()
@@ -98,7 +100,9 @@ class GameRepository(private val context: Context) {
             isComplete     = obj.getBoolean("isComplete"),
             elapsedSeconds = obj.getLong("elapsedSeconds"),
             isNotesMode    = obj.getBoolean("isNotesMode"),
-            showErrors     = obj.getBoolean("showErrors")
+            showErrors     = obj.getBoolean("showErrors"),
+            mistakeCount   = obj.optInt("mistakeCount", 0),
+            isGameOver     = obj.optBoolean("isGameOver", false)
         )
 
         return Pair(state, obj.getBoolean("showMenu"))
