@@ -1,12 +1,14 @@
 package com.sudokurei.game
 
 data class DifficultyStats(
+    val gamesPlayed: Int = 0,
     val gamesWon: Int = 0,
     val bestTime: Long = Long.MAX_VALUE,
     val totalTime: Long = 0L
 ) {
     val averageTime: Long get() = if (gamesWon > 0) totalTime / gamesWon else 0L
     val hasStat: Boolean get() = gamesWon > 0
+    val winRate: Int get() = if (gamesPlayed > 0) (gamesWon * 100) / gamesPlayed else 0
 }
 
 data class PlayerStats(

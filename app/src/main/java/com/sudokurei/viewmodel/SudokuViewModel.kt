@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sudokurei.data.GameRepository
 import com.sudokurei.data.StatsRepository
+import com.sudokurei.data.ThemeRepository
 import com.sudokurei.game.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -14,12 +15,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.ArrayDeque
 
+enum class ThemeMode(val displayName: String) {
+    SYSTEM("System Default"),
+    LIGHT("Light"),
+    DARK("Dark")
+}
+
 enum class AppScreen { MENU, GAME, STATS, SETTINGS }
 
 class SudokuViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val gameRepo  = GameRepository(application)
-    private val statsRepo = StatsRepository(application)
+    private val gameRepo   = GameRepository(application)
+    private val statsRepo  = StatsRepository(application)
+    private val themeRepo  = ThemeRepository(application)
 
     private val _state  = MutableStateFlow(GameState())
     val state: StateFlow<GameState> = _state.asStateFlow()
@@ -27,14 +35,26 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
     private val _screen = MutableStateFlow(AppScreen.MENU)
     val screen: StateFlow<AppScreen> = _screen.asStateFlow()
 
-    private val _stats  = MutableStateFlow(PlayerStats())
+    private val _stats     = MutableStateFlow(PlayerStats())
     val stats: StateFlow<PlayerStats> = _stats.asStateFlow()
+
+    private val _themeMode = MutableStateFlow(ThemeMode.SYSTEM)
+    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+
+    private val _showTimer  = MutableStateFlow(true)
+    val showTimer: StateFlow<Boolean> = _showTimer.asStateFlow()
+
+    private val _autoPause  = MutableStateFlow(true)
+    val autoPause: StateFlow<Boolean> = _autoPause.asStateFlow()
 
     private val history   = ArrayDeque<Move>()
     private var timerJob: Job? = null
 
     init {
         viewModelScope.launch {
+            _themeMode.value  = themeRepo.loadTheme()
+            _showTimer.value  = themeRepo.loadShowTimer()
+            _autoPause.value  = themeRepo.loadAutoPause()
             _stats.value = statsRepo.load()
 
             val saved = gameRepo.load()
@@ -65,12 +85,7 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
         timerJob?.cancel()
         history.clear()
         _screen.value = AppScreen.GAME
-        _state.update { it.copy(
-            isGenerating = true,
-            isComplete = false,
-            isGameOver = false,
-            isNewBest = false
-        )}
+        _state.update { it.copy(isGenerating = true, isComplete = false, isGameOver = false) }
 
         viewModelScope.launch(Dispatchers.Default) {
             val puzzle = SudokuEngine.generate(difficulty)
@@ -149,14 +164,7 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
 
         pushHistory(Move(idx, s.cells[idx]))
         val newCells = s.cells.toMutableList()
-        val hintNum = s.solution[idx]
-        newCells[idx] = CellState(value = hintNum, isGiven = false)
-
-        // Removed notes from related cells
-        SudokuEngine.getRelatedIndices(idx).forEach { relIdx ->
-            val rel = newCells[relIdx]
-            if (hintNum in rel.notes) newCells[relIdx] = rel.copy(notes = rel.notes - hintNum)
-        }
+        newCells[idx] = CellState(value = s.solution[idx], isGiven = false)
 
         val checked  = if (s.showErrors) SudokuEngine.checkErrors(newCells, s.solution) else newCells
         val complete = checked.all { it.value != 0 && !it.isError }
@@ -199,6 +207,33 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
         _stats.value = PlayerStats()
     }
 
+    fun setThemeMode(mode: ThemeMode) {
+        _themeMode.value = mode
+        themeRepo.saveTheme(mode)
+    }
+
+    fun setShowTimer(show: Boolean) {
+        _showTimer.value = show
+        themeRepo.saveShowTimer(show)
+    }
+
+    fun setAutoPause(enabled: Boolean) {
+        _autoPause.value = enabled
+        themeRepo.saveAutoPause(enabled)
+    }
+
+    fun onAppBackground() {
+        val s = _state.value
+        if (_autoPause.value &&
+            !s.isPaused &&
+            !s.isComplete &&
+            !s.isGameOver &&
+            _screen.value == AppScreen.GAME
+        ) {
+            togglePause()
+        }
+    }
+
     // ── Private helpers ────────────────────────────────────────────────────
 
     private fun applyUpdate(
@@ -226,7 +261,10 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
                 timerJob?.cancel()
                 recordWin(s.difficulty, s.elapsedSeconds)
             }
-            gameOver && !s.isGameOver -> timerJob?.cancel()
+            gameOver && !s.isGameOver -> {
+                timerJob?.cancel()
+                recordLoss(s.difficulty)
+            }
         }
     }
 
@@ -235,14 +273,24 @@ class SudokuViewModel(application: Application) : AndroidViewModel(application) 
         val ds        = current.forDifficulty(difficulty)
         val isNewBest = ds.gamesWon == 0 || elapsedSeconds < ds.bestTime
         val updated   = ds.copy(
-            gamesWon  = ds.gamesWon + 1,
-            bestTime  = minOf(ds.bestTime, elapsedSeconds),
-            totalTime = ds.totalTime + elapsedSeconds
+            gamesPlayed = ds.gamesPlayed + 1,
+            gamesWon    = ds.gamesWon + 1,
+            bestTime    = minOf(ds.bestTime, elapsedSeconds),
+            totalTime   = ds.totalTime + elapsedSeconds
         )
         val newStats = current.withUpdated(difficulty, updated)
         _stats.value = newStats
         statsRepo.save(newStats)
         _state.update { it.copy(isNewBest = isNewBest) }
+    }
+
+    private fun recordLoss(difficulty: Difficulty) {
+        val current  = _stats.value
+        val ds       = current.forDifficulty(difficulty)
+        val updated  = ds.copy(gamesPlayed = ds.gamesPlayed + 1)
+        val newStats = current.withUpdated(difficulty, updated)
+        _stats.value = newStats
+        statsRepo.save(newStats)
     }
 
     private fun pushHistory(move: Move) {

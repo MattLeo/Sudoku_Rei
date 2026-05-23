@@ -22,7 +22,8 @@ data class GameState(
     val showErrors: Boolean = true,
     val mistakeCount: Int = 0,
     val isGameOver: Boolean = false,
-    val isNewBest: Boolean = false
+    val isNewBest: Boolean = false,
+    val undosRemaining: Int = 3
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -41,7 +42,8 @@ data class GameState(
                 showErrors == other.showErrors &&
                 mistakeCount == other.mistakeCount &&
                 isGameOver == other.isGameOver &&
-                isNewBest == other.isNewBest
+                isNewBest == other.isNewBest &&
+                undosRemaining == other.undosRemaining
     }
 
     override fun hashCode(): Int {
@@ -60,6 +62,7 @@ data class GameState(
         result = 31 * result + mistakeCount
         result = 31 * result + isGameOver.hashCode()
         result = 31 * result + isNewBest.hashCode()
+        result = 31 * result + undosRemaining
         return result
     }
 }

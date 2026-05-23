@@ -1,6 +1,7 @@
 package com.sudokurei.data
 
 import android.content.Context
+import androidx.core.content.edit
 import com.sudokurei.game.Difficulty
 import com.sudokurei.game.DifficultyStats
 import com.sudokurei.game.PlayerStats
@@ -12,7 +13,7 @@ class StatsRepository(context: Context) {
     private val key = "player_stats"
 
     fun save(stats: PlayerStats) {
-        prefs.edit().putString(key, serialize(stats)).apply()
+        prefs.edit { putString(key, serialize(stats)) }
     }
 
     fun load(): PlayerStats {
@@ -21,7 +22,7 @@ class StatsRepository(context: Context) {
     }
 
     fun reset() {
-        prefs.edit().remove(key).apply()
+        prefs.edit { remove(key) }
     }
 
     private fun serialize(stats: PlayerStats): String {
@@ -29,9 +30,10 @@ class StatsRepository(context: Context) {
         Difficulty.entries.forEach { diff ->
             val ds = stats.forDifficulty(diff)
             obj.put(diff.name, JSONObject().apply {
-                put("won",   ds.gamesWon)
-                put("best",  ds.bestTime)
-                put("total", ds.totalTime)
+                put("played", ds.gamesPlayed)
+                put("won",    ds.gamesWon)
+                put("best",   ds.bestTime)
+                put("total",  ds.totalTime)
             })
         }
         return obj.toString()
@@ -46,9 +48,10 @@ class StatsRepository(context: Context) {
                 stats = stats.withUpdated(
                     diff,
                     DifficultyStats(
-                        gamesWon  = d.getInt("won"),
-                        bestTime  = d.getLong("best"),
-                        totalTime = d.getLong("total")
+                        gamesPlayed = d.optInt("played", 0),
+                        gamesWon    = d.getInt("won"),
+                        bestTime    = d.getLong("best"),
+                        totalTime   = d.getLong("total")
                     )
                 )
             }

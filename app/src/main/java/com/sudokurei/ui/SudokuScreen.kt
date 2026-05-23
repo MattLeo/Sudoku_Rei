@@ -15,13 +15,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
 import com.sudokurei.game.Difficulty
 import com.sudokurei.viewmodel.AppScreen
 import com.sudokurei.viewmodel.SudokuViewModel
@@ -31,37 +31,44 @@ import com.sudokurei.ui.theme.*
 
 @Composable
 fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
-    val screen by vm.screen.collectAsStateWithLifecycle()
-    val stats  by vm.stats.collectAsStateWithLifecycle()
+    val screen    by vm.screen.collectAsStateWithLifecycle()
+    val stats     by vm.stats.collectAsStateWithLifecycle()
+    val themeMode by vm.themeMode.collectAsStateWithLifecycle()
+    val showTimer by vm.showTimer.collectAsStateWithLifecycle()
+    val autoPause by vm.autoPause.collectAsStateWithLifecycle()
 
-    AnimatedContent(
-        targetState = screen,
-        transitionSpec = {
-            (fadeIn(animationSpec = tween(300)) +
-                    scaleIn(initialScale = 0.92f, animationSpec = tween(300)))
-                .togetherWith(
-                    fadeOut(animationSpec = tween(150)) +
-                            scaleOut(targetScale = 0.92f, animationSpec = tween(150))
-                )
-        },
-        label = "screen_transition"
-    ) { targetScreen ->
-        when (targetScreen) {
-            AppScreen.MENU -> MenuScreen(
-                onNewGame    = vm::startNewGame,
-                onStatistics = { vm.navigateTo(AppScreen.STATS) },
-                onSettings   = { vm.navigateTo(AppScreen.SETTINGS) }
-            )
-            AppScreen.GAME     -> GameContent(vm)
-            AppScreen.STATS    -> StatsScreen(
-                stats   = stats,
-                onBack  = { vm.navigateTo(AppScreen.MENU) },
-                onReset = vm::resetStats
-            )
-            AppScreen.SETTINGS -> SettingsScreen(
-                onBack = { vm.navigateTo(AppScreen.MENU) }
-            )
+
+    // Auto-pause when app is backgrounded
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) vm.onAppBackground()
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    when (screen) {
+        AppScreen.MENU -> MenuScreen(
+            onNewGame    = vm::startNewGame,
+            onStatistics = { vm.navigateTo(AppScreen.STATS) },
+            onSettings   = { vm.navigateTo(AppScreen.SETTINGS) }
+        )
+        AppScreen.GAME     -> GameContent(vm)
+        AppScreen.STATS    -> StatsScreen(
+            stats   = stats,
+            onBack  = { vm.navigateTo(AppScreen.MENU) },
+            onReset = vm::resetStats
+        )
+        AppScreen.SETTINGS -> SettingsScreen(
+            themeMode         = themeMode,
+            onThemeChange     = vm::setThemeMode,
+            showTimer         = showTimer,
+            onShowTimerChange = vm::setShowTimer,
+            autoPause         = autoPause,
+            onAutoPauseChange = vm::setAutoPause,
+            onBack            = { vm.navigateTo(AppScreen.MENU) }
+        )
     }
 }
 
@@ -70,7 +77,8 @@ fun SudokuScreen(vm: SudokuViewModel = viewModel()) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GameContent(vm: SudokuViewModel) {
-    val state by vm.state.collectAsStateWithLifecycle()
+    val state     by vm.state.collectAsStateWithLifecycle()
+    val showTimer by vm.showTimer.collectAsStateWithLifecycle()
     var showCompletionDialog by remember { mutableStateOf(false) }
     var showGameOverDialog   by remember { mutableStateOf(false) }
     var showAbandonDialog    by remember { mutableStateOf(false) }
@@ -91,7 +99,7 @@ private fun GameContent(vm: SudokuViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Sudoku Rei", fontWeight = FontWeight.Bold) },
+                title = { Text("Sudoku", fontWeight = FontWeight.Bold) },
                 actions = {
                     TextButton(onClick = {
                         if (state.isComplete || state.isGameOver) {
@@ -134,7 +142,7 @@ private fun GameContent(vm: SudokuViewModel) {
             ) {
                 DifficultyBadge(state.difficulty)
                 MistakeCounter(state.mistakeCount)
-                TimerDisplay(state.elapsedSeconds, state.isPaused, vm::togglePause)
+                TimerDisplay(state.elapsedSeconds, state.isPaused, showTimer, vm::togglePause)
             }
 
             Spacer(Modifier.height(10.dp))
@@ -195,7 +203,6 @@ private fun GameContent(vm: SudokuViewModel) {
         CompletionDialog(
             difficulty = state.difficulty,
             seconds    = state.elapsedSeconds,
-            isNewBest  = state.isNewBest,
             onDismiss  = { showCompletionDialog = false },
             onMenu     = { showCompletionDialog = false; vm.showMainMenu() }
         )
@@ -262,14 +269,16 @@ private fun MistakeCounter(mistakeCount: Int) {
 }
 
 @Composable
-private fun TimerDisplay(seconds: Long, isPaused: Boolean, onToggle: () -> Unit) {
-    val text = remember(seconds) { "%02d:%02d".format(seconds / 60, seconds % 60) }
+private fun TimerDisplay(seconds: Long, isPaused: Boolean, showTime: Boolean, onToggle: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Icon(Icons.Default.Timer, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(text, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.titleMedium)
+        if (showTime) {
+            val text = remember(seconds) { "%02d:%02d".format(seconds / 60, seconds % 60) }
+            Icon(Icons.Default.Timer, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.titleMedium)
+        }
         IconButton(onClick = onToggle, modifier = Modifier.size(36.dp)) {
             Icon(
                 imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
@@ -342,66 +351,25 @@ private fun PauseOverlay(modifier: Modifier = Modifier) {
 private fun CompletionDialog(
     difficulty: Difficulty,
     seconds: Long,
-    isNewBest: Boolean,
     onDismiss: () -> Unit,
     onMenu: () -> Unit
 ) {
     val time = "%02d:%02d".format(seconds / 60, seconds % 60)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = " \uD83C\uDF89 Puzzle Complete!",
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
+        title = { Text("Puzzle Complete!") },
         text = {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (isNewBest) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Star,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                "New Best!",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                }
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text("${difficulty.displayName} difficulty", style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    text = time,
+                Text(time,
                     style = MaterialTheme.typography.displaySmall,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
-                Text(
-                    "time",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text("time", style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = { Button(onClick = onMenu) { Text("Main Menu") } },

@@ -123,11 +123,23 @@ private fun StatCard(difficulty: Difficulty, stats: DifficultyStats) {
 
             Spacer(Modifier.height(16.dp))
 
+            // Row 1: Played, Won, Win Rate
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                StatItem(label = "Won",     value = stats.gamesWon.toString())
+                StatItem(label = "Played",   value = stats.gamesPlayed.toString())
+                StatItem(label = "Won",      value = stats.gamesWon.toString())
+                StatItem(label = "Win Rate", value = if (stats.gamesPlayed > 0) "${stats.winRate}%" else "—")
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Row 2: Best, Average
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
                 StatItem(label = "Best",    value = if (stats.hasStat) formatTime(stats.bestTime)    else "—")
                 StatItem(label = "Average", value = if (stats.hasStat) formatTime(stats.averageTime) else "—")
             }
